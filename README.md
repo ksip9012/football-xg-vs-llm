@@ -43,13 +43,17 @@ mise run figures     # モデルを確かめる図と集計の図（notes/figure
 
 ## LLM との比べ（進行中）
 
-同じシュートを Gemini 3.8 Flash（Vertex AI）に見せ、統計モデルと同じ情報（距離・ゴールの見える角度・頭か足か）だけで、ゴールになる確率を答えさせる。選手の名前・チーム・試合の日付は渡さない。500本の試しでは、統計モデルとほぼ同じくらい当て（相関 0.98）、確率は全体に低めだった。考える量（thinking）を増やしても良くならなかった。
+同じシュートを Gemini 3.8 Flash（Vertex AI）に見せ、統計モデルと同じ情報（距離・ゴールの見える角度・頭か足か）だけで、ゴールになる確率を答えさせる。選手の名前・チーム・試合の日付は渡さない。
+
+テストの 8,626本（388試合）では、**当たり方の差は見分けられなかった**（AUC は統計モデル 0.7945・Gemini 0.7938、差の 95% の幅 −0.0043〜+0.0026）。答え方もよく似ている（確率の相関 0.979）。ただし Gemini は確率を低めに出す（平均 0.092、実際の率 0.104）。考える量（thinking）を増やしても良くならなかった（500本の試し）。
 
 ```bash
-mise run llm-trial   # 500本の試し（data/llm_runs/trial/ に答えがあれば API は呼ばない）
+mise run llm-trial     # 500本の試し（data/llm_runs/trial/ に答えがあれば API は呼ばない）
+mise run llm-test      # テストの 8,626本（data/llm_runs/test/。同上）
+mise run compare-llm   # 物差し・差の 95% の幅・図
 ```
 
-Vertex AI を使うので、手元の `mise.local.toml`（git の対象外）に `GOOGLE_CLOUD_PROJECT` と `GOOGLE_CLOUD_QUOTA_PROJECT` を書き、`gcloud auth application-default login` でログインしておく。結果は [notes/llm-trial.md](./notes/llm-trial.md)。
+Vertex AI を使うので、手元の `mise.local.toml`（git の対象外）に `GOOGLE_CLOUD_PROJECT` と `GOOGLE_CLOUD_QUOTA_PROJECT` を書き、`gcloud auth application-default login` でログインしておく。結果は [notes/llm-trial.md](./notes/llm-trial.md)（試し）と [notes/llm-test.md](./notes/llm-test.md)（本番）。
 
 ## テストの実行方法
 

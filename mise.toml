@@ -67,3 +67,11 @@ run = [
 [tasks.llm-trial]
 description = "Gemini で 500本を試し、考える量と揺れを見て、統計モデルと並べる（decisions/0006。料金がかかる）"
 run = "uv run python -W ignore::SyntaxWarning -m football_xg_vs_llm.trial"
+
+[tasks.llm-test]
+description = "テストの 8,626本を Gemini（LOW・50本）に答えさせ、data/xg_gemini.csv に置く（decisions/0006。料金がかかる）"
+run = "uv run python -W ignore::SyntaxWarning -m football_xg_vs_llm.llm_test"
+
+[tasks.compare-llm]
+description = "テストの 8,626本で Gemini と統計モデルを比べ、差の 95% の幅と図を出す（decisions/0006）"
+run = "uv run python -W ignore::SyntaxWarning -m football_xg_vs_llm.compare_llm"
