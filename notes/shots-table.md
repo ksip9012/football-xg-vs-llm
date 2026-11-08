@@ -6,6 +6,7 @@
 - 行: 45,945本（`shot` 43,078・`free_kick` 2,209・`penalty` 658）。ゴールは `shot` 4,492・`free_kick` 137・`penalty` 477
 - 並び: 大会の名前の順、その中は元データの並び（試合・前後半・時刻の順）
 - 書き方: 真偽は `0`/`1`、値がなければ空欄。DuckDB などは空欄を NULL として読む
+- 型と値の決まりは `src/football_xg_vs_llm/models.py` の `Shot`（pydantic。[decisions/0003](../decisions/0003-pydantic-models.md)）。Python から読むときは `load_shots_csv` で、1行ずつ確かめながら読み戻せる
 
 ## 列
 
@@ -49,4 +50,4 @@
 
 ### ID の型
 
-シュートの 3種類（45,945件）では、`id`・`matchId`・`teamId`・`playerId`・`eventId`・`subEventId` はすべて数値だった。型の揺れ（文字列・空文字）は、ほかの種類のイベントやファイルのもの（[wyscout-data-columns.md](./wyscout-data-columns.md)）。表を作るときは、念のため数値に直している。
+シュートの 3種類（45,945件）では、`id`・`matchId`・`teamId`・`playerId`・`eventId`・`subEventId` はすべて数値だった。型の揺れ（文字列・空文字）は、ほかの種類のイベントやファイルのもの（[wyscout-data-columns.md](./wyscout-data-columns.md)）。表を作るときは、元データのイベントのモデル（`Event`）で、数値にそろえて確かめている。全イベント（3,251,294件）では、`eventSec` が整数のものが 24件、`subEventId` が空文字のものが 8,182件、位置が 1つのものが 741件、位置の値は -1〜101 だった。
