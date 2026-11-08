@@ -176,20 +176,15 @@ def roc_auc(goals: Floats, probs: Floats) -> float:
     """AUC（ゴールのシュートに、外れより高い確率を付けられた割合）。
 
     同じ確率は順位を平均して数える（マン・ホイットニーの U と同じ）。
+    ブートストラップで何千回も呼ぶので、ループを使わずに numpy で数える。
     """
-    order = np.argsort(probs, kind="mergesort")
-    sorted_probs = probs[order]
-    ranks = np.empty(len(probs))
-    start = 0
-    while start < len(probs):
-        end = start
-        while (
-            end + 1 < len(probs)
-            and sorted_probs[end + 1] == sorted_probs[start]
-        ):
-            end += 1
-        ranks[order[start : end + 1]] = (start + end) / 2 + 1
-        start = end + 1
+    _, inverse, counts = np.unique(
+        probs, return_inverse=True, return_counts=True
+    )
+    # 同じ値のかたまりの、最初の順位（1 から）と最後の順位の平均
+    first = np.cumsum(counts) - counts + 1
+    average_rank = first + (counts - 1) / 2
+    ranks = average_rank[inverse]
     positives = goals == 1
     n_pos = int(positives.sum())
     n_neg = len(goals) - n_pos

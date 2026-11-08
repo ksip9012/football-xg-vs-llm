@@ -85,7 +85,7 @@ SCATTER_MIN_SHOTS = 20
 LABELS_EACH_SIDE = 3
 
 
-def _style() -> None:
+def style() -> None:
     plt.rcParams.update(
         {
             "figure.facecolor": SURFACE,
@@ -183,7 +183,7 @@ def _box(ax: Axes, x: float, y: float, width: float, height: float) -> None:
     )
 
 
-def _half_pitch(ax: Axes) -> None:
+def half_pitch(ax: Axes) -> None:
     """攻める側のハーフピッチの線（ゴールが上。メートル）。"""
     half = PITCH_LENGTH / 2
     mid = PITCH_WIDTH / 2
@@ -251,7 +251,7 @@ def shot_map_figure(rows: Sequence[ScoredShot], path: Path) -> None:
             linewidth=0.5,
             zorder=1,
         )
-        _half_pitch(ax)
+        half_pitch(ax)
         ax.set_title(title, loc="left")
     assert image is not None
     bar = fig.colorbar(image, ax=axes, shrink=0.8, extend="max", aspect=30)
@@ -403,7 +403,7 @@ def make_figures(
     out_dir: Path,
 ) -> list[Path]:
     """4つの図を作り、置いた場所を返す。"""
-    _style()
+    style()
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = [
         out_dir / "calibration.png",
