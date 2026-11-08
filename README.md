@@ -12,7 +12,12 @@ mise install
 uv sync
 uv run pre-commit install   # コミットの前に mise run check を動かす
 mise run fetch              # 元データを落とし、sha256 を確かめる（86MB ほど）
+mise run shots              # シュートの表 data/shots.csv を作り直す（リポジトリにも入っている）
 ```
+
+## シュートの表
+
+`data/shots.csv` は、元データからシュートを 1行 1本に抜き出した表（45,945本。普通のシュート・直接フリーキック・PK）。打った位置・体の部位・カウンターか・同じチームの直前のイベントと、ゴールになったかを持つ。シュートのあとに決まる情報（枠内か・ブロックか・ゴールのどこか）は入れていない。列の説明と、作るときに数えたことは [notes/shots-table.md](./notes/shots-table.md)。
 
 ## テストの実行方法
 
@@ -35,3 +40,4 @@ mise run fix     # ruff の自動修正と format
 ## 技術選定理由
 
 - [0001](./decisions/0001-source-data-placement.md): 元データはすべて落として使い、zip は展開せずに読む
+- [0002](./decisions/0002-shots-table.md): シュートの表は 3種類を 1つの CSV にし、シュートのあとに決まる情報とタグ 201 は入れない
