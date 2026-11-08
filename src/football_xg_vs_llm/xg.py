@@ -62,12 +62,19 @@ class Dataset:
         names: 特徴の名前。
         goals: ゴールになったか（1.0 / 0.0）。
         match_ids: 試合の ID（学習とテストを試合単位で分けるため）。
+        shot_ids: シュートの ID（xG を表の行とつなぐため）。
     """
 
     features: Floats
     names: tuple[str, ...]
     goals: Floats
     match_ids: NDArray[np.int64]
+    shot_ids: NDArray[np.int64]
+
+
+def is_modeled(shot: Shot) -> bool:
+    """xG のモデルの対象か（普通のシュートで、自陣から打ったものではない）。"""
+    return shot.shot_type == "shot" and shot.x >= MIN_X
 
 
 def build_dataset(shots: Sequence[Shot], *, with_head: bool) -> Dataset:
@@ -77,7 +84,7 @@ def build_dataset(shots: Sequence[Shot], *, with_head: bool) -> Dataset:
         shots: シュートの表の行。
         with_head: 特徴に「頭か体か」（1.0 / 0.0）を足すか。
     """
-    rows = [s for s in shots if s.shot_type == "shot" and s.x >= MIN_X]
+    rows = [s for s in shots if is_modeled(s)]
     x = np.array([s.x for s in rows], dtype=np.float64)
     y = np.array([s.y for s in rows], dtype=np.float64)
     distance, angle = distance_and_angle(x, y)
@@ -92,6 +99,7 @@ def build_dataset(shots: Sequence[Shot], *, with_head: bool) -> Dataset:
         names=tuple(names),
         goals=np.array([s.is_goal for s in rows], dtype=np.float64),
         match_ids=np.array([s.match_id for s in rows], dtype=np.int64),
+        shot_ids=np.array([s.shot_id for s in rows], dtype=np.int64),
     )
 
 
