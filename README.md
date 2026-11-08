@@ -41,6 +41,16 @@ mise run figures     # モデルを確かめる図と集計の図（notes/figure
 
 結果・図・読み方は [notes/xg-aggregates.md](./notes/xg-aggregates.md)。
 
+## LLM との比べ（進行中）
+
+同じシュートを Gemini 3.8 Flash（Vertex AI）に見せ、統計モデルと同じ情報（距離・ゴールの見える角度・頭か足か）だけで、ゴールになる確率を答えさせる。選手の名前・チーム・試合の日付は渡さない。500本の試しでは、統計モデルとほぼ同じくらい当て（相関 0.98）、確率は全体に低めだった。考える量（thinking）を増やしても良くならなかった。
+
+```bash
+mise run llm-trial   # 500本の試し（data/llm_runs/trial/ に答えがあれば API は呼ばない）
+```
+
+Vertex AI を使うので、手元の `mise.local.toml`（git の対象外）に `GOOGLE_CLOUD_PROJECT` と `GOOGLE_CLOUD_QUOTA_PROJECT` を書き、`gcloud auth application-default login` でログインしておく。結果は [notes/llm-trial.md](./notes/llm-trial.md)。
+
 ## テストの実行方法
 
 ```bash
@@ -66,3 +76,4 @@ mise run fix     # ruff の自動修正と format
 - [0003](./decisions/0003-pydantic-models.md): 元データのイベントとシュートの表の 1行を pydantic のモデルにして確かめる
 - [0004](./decisions/0004-first-xg-three-ways.md): 最初の xG は距離と角度のロジスティック回帰にし、numpy・scikit-learn・statsmodels の 3通りで作って比べる
 - [0005](./decisions/0005-cv-aggregates-figures.md): xG は試合単位の交差検証で出して `shot_id, xg` の CSV に置き、選手・チーム・大会ごとに集計して、図は英語のラベルの PNG にする
+- [0006](./decisions/0006-compare-with-llm.md): LLM には統計モデルと同じ情報だけを渡して確率を答えさせ、段階を踏んで本数を増やし、同じ物差しと差の幅で比べる

@@ -7,6 +7,11 @@ uv = "0.13.6"
 # uv が自分で Python を探さず、上の [tools] で mise が入れた Python を使うようにする
 # （版を決める場所を mise.toml の 1か所にする）
 UV_PYTHON_PREFERENCE = "only-system"
+# Gemini は Vertex AI で、gcloud のログイン（ADC）で呼ぶ（decisions/0006）。
+# GCP のプロジェクトは手元の mise.local.toml に GOOGLE_CLOUD_PROJECT と
+# GOOGLE_CLOUD_QUOTA_PROJECT で書く
+GOOGLE_GENAI_USE_VERTEXAI = "true"
+GOOGLE_CLOUD_LOCATION = "global"
 
 # 手元・pre-commit・CI で同じチェックを動かす（dotfiles の decisions/0003-checks-in-mise-tasks）
 # ruff・pyright・pytest の版は uv.lock で固定する
@@ -58,3 +63,7 @@ run = [
   "uv lock --upgrade",
   "mise run check",
 ]
+
+[tasks.llm-trial]
+description = "Gemini で 500本を試し、考える量と揺れを見て、統計モデルと並べる（decisions/0006。料金がかかる）"
+run = "uv run python -W ignore::SyntaxWarning -m football_xg_vs_llm.trial"
