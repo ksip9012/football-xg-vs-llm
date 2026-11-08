@@ -1,4 +1,4 @@
-# soccer-xg-vs-llm
+# football-xg-vs-llm
 
 サッカーのシュートのゴール期待値（xG）を統計モデルで作り、LLM の予測と比べる（個人プロジェクト Step3）。
 

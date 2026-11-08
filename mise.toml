@@ -21,11 +21,11 @@ run = [
 
 [tasks.fetch]
 description = "元データ（data/sources.toml）を落として sha256 を確かめる"
-run = "uv run python -m soccer_xg_vs_llm.sources"
+run = "uv run python -m football_xg_vs_llm.sources"
 
 [tasks.shots]
 description = "data/raw/events.zip からシュートの表 data/shots.csv を作る（decisions/0002）"
-run = "uv run python -m soccer_xg_vs_llm.shots"
+run = "uv run python -m football_xg_vs_llm.shots"
 
 [tasks.fix]
 description = "lint の自動修正と format"

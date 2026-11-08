@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from soccer_xg_vs_llm.shots import (
+from football_xg_vs_llm.shots import (
     COLUMNS,
     competition_of,
     extract_shots,

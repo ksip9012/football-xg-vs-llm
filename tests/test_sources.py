@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from soccer_xg_vs_llm.sources import (
+from football_xg_vs_llm.sources import (
     ChecksumMismatchError,
     Source,
     fetch,
