@@ -19,6 +19,16 @@ mise run shots              # シュートの表 data/shots.csv を作り直す�
 
 `data/shots.csv` は、元データからシュートを 1行 1本に抜き出した表（45,945本。普通のシュート・直接フリーキック・PK）。打った位置・体の部位・カウンターか・同じチームの直前のイベントと、ゴールになったかを持つ。シュートのあとに決まる情報（枠内か・ブロックか・ゴールのどこか）は入れていない。列の説明と、作るときに数えたことは [notes/shots-table.md](./notes/shots-table.md)。
 
+## 最初の xG
+
+ゴールまでの距離と、両ポストを見込む角度（と、頭か体か）のロジスティック回帰。numpy で自分で書いたもの・scikit-learn・statsmodels の 3通りで作り、同じ答えになることを確かめた。平均の率だけを出すモデルと比べて、テストの AUC は 0.50 → 0.78（頭か体かを足すと 0.79）。
+
+```bash
+mise run xg   # 3通りの係数・物差し・時間を Markdown の表で出す
+```
+
+結果と読み方は [notes/xg-baseline.md](./notes/xg-baseline.md)。
+
 ## テストの実行方法
 
 ```bash
@@ -42,3 +52,4 @@ mise run fix     # ruff の自動修正と format
 - [0001](./decisions/0001-source-data-placement.md): 元データはすべて落として使い、zip は展開せずに読む
 - [0002](./decisions/0002-shots-table.md): シュートの表は 3種類を 1つの CSV にし、シュートのあとに決まる情報とタグ 201 は入れない
 - [0003](./decisions/0003-pydantic-models.md): 元データのイベントとシュートの表の 1行を pydantic のモデルにして確かめる
+- [0004](./decisions/0004-first-xg-three-ways.md): 最初の xG は距離と角度のロジスティック回帰にし、numpy・scikit-learn・statsmodels の 3通りで作って比べる

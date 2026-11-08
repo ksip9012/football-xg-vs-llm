@@ -27,6 +27,10 @@ run = "uv run python -m football_xg_vs_llm.sources"
 description = "data/raw/events.zip からシュートの表 data/shots.csv を作る（decisions/0002）"
 run = "uv run python -m football_xg_vs_llm.shots"
 
+[tasks.xg]
+description = "最初の xG を numpy・scikit-learn・statsmodels の 3通りで作って比べる（decisions/0004）"
+run = "uv run python -m football_xg_vs_llm.compare"
+
 [tasks.fix]
 description = "lint の自動修正と format"
 run = [
