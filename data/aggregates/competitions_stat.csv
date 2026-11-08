@@ -1,0 +1,8 @@
+key,label,shots,goals,xg,goals_minus_xg
+England,England,8443,913,920.662,-7.662
+Italy,Italy,8782,853,884.987,-31.987
+Spain,Spain,7959,883,850.636,32.364
+France,France,8311,873,848.768,24.232
+Germany,Germany,6875,745,742.969,2.031
+World_Cup,World_Cup,1413,128,134.744,-6.744
+European_Championship,European_Championship,1195,93,106.380,-13.380

@@ -31,6 +31,18 @@ run = "uv run python -m football_xg_vs_llm.shots"
 description = "最初の xG を numpy・scikit-learn・statsmodels の 3通りで作って比べる（decisions/0004）"
 run = "uv run python -m football_xg_vs_llm.compare"
 
+[tasks.xg-cv]
+description = "試合単位の 5分割の交差検証で、シュートごとの xG を data/xg_stat.csv に出す（decisions/0005）"
+run = "uv run python -m football_xg_vs_llm.cv"
+
+[tasks.aggregate]
+description = "選手・チーム・大会ごとに集計し、決定力が本物かを確かめる（data/aggregates/）"
+run = "uv run python -m football_xg_vs_llm.aggregate"
+
+[tasks.figures]
+description = "モデルを確かめる図と集計の図を notes/figures/ に作る"
+run = "uv run python -m football_xg_vs_llm.figures"
+
 [tasks.fix]
 description = "lint の自動修正と format"
 run = [

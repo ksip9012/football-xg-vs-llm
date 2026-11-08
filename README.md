@@ -29,6 +29,18 @@ mise run xg   # 3通りの係数・物差し・時間を Markdown の表で出�
 
 結果と読み方は [notes/xg-baseline.md](./notes/xg-baseline.md)。
 
+## 選手・チーム・大会ごとの集計
+
+試合単位の交差検証で、どのシュートにも「その試合を学習に使っていないモデル」の xG を付け（`data/xg_stat.csv`）、選手・チーム・大会ごとに集計した（`data/aggregates/`。PK・直接フリーキックを除く）。試合を 2つに分けて比べると、打つ場所のよさ（1本あたりの xG）は相関 0.70 で続くが、決定力（1本あたりのゴール − xG）は 0.14 しか続かず、選手ごとの差の多くは偶然と読める。
+
+```bash
+mise run xg-cv       # シュートごとの xG（5分割の交差検証）
+mise run aggregate   # 集計の CSV と Markdown の表、決定力の確かめ
+mise run figures     # モデルを確かめる図と集計の図（notes/figures/）
+```
+
+結果・図・読み方は [notes/xg-aggregates.md](./notes/xg-aggregates.md)。
+
 ## テストの実行方法
 
 ```bash
@@ -53,3 +65,4 @@ mise run fix     # ruff の自動修正と format
 - [0002](./decisions/0002-shots-table.md): シュートの表は 3種類を 1つの CSV にし、シュートのあとに決まる情報とタグ 201 は入れない
 - [0003](./decisions/0003-pydantic-models.md): 元データのイベントとシュートの表の 1行を pydantic のモデルにして確かめる
 - [0004](./decisions/0004-first-xg-three-ways.md): 最初の xG は距離と角度のロジスティック回帰にし、numpy・scikit-learn・statsmodels の 3通りで作って比べる
+- [0005](./decisions/0005-cv-aggregates-figures.md): xG は試合単位の交差検証で出して `shot_id, xg` の CSV に置き、選手・チーム・大会ごとに集計して、図は英語のラベルの PNG にする
