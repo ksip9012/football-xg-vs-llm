@@ -3,18 +3,20 @@
 表の形の決めごとは decisions/0002、列の説明は notes/shots-table.md。
 シュートのあとに決まる情報（ゴールのどこに飛んだか、枠内か、ブロックか、
 終わりの位置、タグ 201 Opportunity）は、答えが漏れるので表に入れない。
+イベントと表の 1行は、models の pydantic のモデルで確かめる。
 """
 
 import csv
-import json
 import logging
 import sys
 import zipfile
 from collections import Counter
 from collections.abc import Iterable, Iterator
-from dataclasses import asdict, dataclass, fields
 from pathlib import Path
-from typing import Any, cast
+
+from pydantic import TypeAdapter
+
+from football_xg_vs_llm.models import COLUMNS, Event, Shot, ShotType
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,7 @@ DEFAULT_EVENTS_PATH = Path("data/raw/events.zip")
 DEFAULT_OUTPUT_PATH = Path("data/shots.csv")
 
 # (eventId, subEventId) → シュートの種類
-SHOT_KINDS: dict[tuple[int, int], str] = {
+SHOT_KINDS: dict[tuple[int, int], ShotType] = {
     (10, 100): "shot",  # Shot / Shot
     (3, 33): "free_kick",  # Free Kick / Free kick shot（直接フリーキック）
     (3, 35): "penalty",  # Free Kick / Penalty
@@ -36,58 +38,24 @@ BODY_PART_TAGS: dict[int, str] = {
     403: "head_or_body",
 }
 
-
-@dataclass(frozen=True)
-class Shot:
-    """シュート 1本。列の意味は notes/shots-table.md。"""
-
-    shot_id: int
-    competition: str
-    match_id: int
-    match_period: str
-    event_sec: float
-    team_id: int
-    player_id: int
-    shot_type: str
-    x: int
-    y: int
-    body_part: str
-    is_counter_attack: bool
-    prev_event: str
-    prev_seconds_before: float | None
-    is_goal: bool
+_EVENTS = TypeAdapter(list[Event])
 
 
-COLUMNS: list[str] = [f.name for f in fields(Shot)]
-
-
-def _tag_ids(event: dict[str, Any]) -> set[int]:
-    tags = cast("list[dict[str, Any]]", event.get("tags", []))
-    return {int(tag["id"]) for tag in tags}
-
-
-def _kind(event: dict[str, Any]) -> str | None:
+def _kind(event: Event) -> ShotType | None:
     """シュートの種類。シュートでなければ None。"""
-    sub_event_id = event.get("subEventId")
-    if sub_event_id in (None, ""):
+    if event.sub_event_id is None:
         return None
-    return SHOT_KINDS.get((int(event["eventId"]), int(sub_event_id)))
+    return SHOT_KINDS.get((event.event_id, event.sub_event_id))
 
 
-def _event_name(event: dict[str, Any]) -> str:
-    """イベントの細かい種類の名前（なければ大きい種類の名前）。"""
-    return str(event.get("subEventName") or event["eventName"])
-
-
-def _body_part(tag_ids: set[int]) -> str:
+def _body_part(tag_ids: frozenset[int]) -> str | None:
+    """体の部位のタグがちょうど 1つなら、その名前。"""
     found = sorted(tag_ids & BODY_PART_TAGS.keys())
     parts = [BODY_PART_TAGS[t] for t in found]
-    return parts[0] if len(parts) == 1 else ""
+    return parts[0] if len(parts) == 1 else None
 
 
-def extract_shots(
-    events: Iterable[dict[str, Any]], competition: str
-) -> Iterator[Shot]:
+def extract_shots(events: Iterable[Event], competition: str) -> Iterator[Shot]:
     """1大会分のイベントからシュートを抜き出す。
 
     イベントは、試合・前後半・時刻の順に並んでいるものとする（元データの並び）。
@@ -95,48 +63,52 @@ def extract_shots(
     中の同じチームの 1つ前のイベント（decisions/0002）。
 
     Args:
-        events: 大会の JSON の中身（イベントの並び）。
+        events: 大会のイベントの並び。
         competition: 大会の名前（`events_England.json` なら `England`）。
 
     Yields:
         シュート。元データの並びの順。
+
+    Raises:
+        pydantic.ValidationError: シュートの行が決まりに合わない場合
+            （体の部位のタグがない、位置が 0〜100 の外など）。
     """
     current: tuple[int, str] | None = None
-    last_by_team: dict[int, dict[str, Any]] = {}
+    last_by_team: dict[int, Event] = {}
     for event in events:
-        key = (int(event["matchId"]), str(event["matchPeriod"]))
+        key = (event.match_id, event.match_period)
         if key != current:
             current = key
             last_by_team = {}
-        team_id = int(event["teamId"])
         kind = _kind(event)
         if kind is not None:
-            tag_ids = _tag_ids(event)
-            start = cast("list[dict[str, Any]]", event["positions"])[0]
-            event_sec = float(event["eventSec"])
-            prev = last_by_team.get(team_id)
-            yield Shot(
-                shot_id=int(event["id"]),
-                competition=competition,
-                match_id=key[0],
-                match_period=key[1],
-                event_sec=round(event_sec, 3),
-                team_id=team_id,
-                player_id=int(event["playerId"]),
-                shot_type=kind,
-                x=int(start["x"]),
-                y=int(start["y"]),
-                body_part=_body_part(tag_ids),
-                is_counter_attack=TAG_COUNTER_ATTACK in tag_ids,
-                prev_event="" if prev is None else _event_name(prev),
-                prev_seconds_before=(
-                    None
-                    if prev is None
-                    else round(event_sec - float(prev["eventSec"]), 3)
-                ),
-                is_goal=TAG_GOAL in tag_ids,
+            tag_ids = event.tag_ids
+            start = event.positions[0]
+            prev = last_by_team.get(event.team_id)
+            yield Shot.model_validate(
+                {
+                    "shot_id": event.id,
+                    "competition": competition,
+                    "match_id": event.match_id,
+                    "match_period": event.match_period,
+                    "event_sec": round(event.event_sec, 3),
+                    "team_id": event.team_id,
+                    "player_id": event.player_id,
+                    "shot_type": kind,
+                    "x": start.x,
+                    "y": start.y,
+                    "body_part": _body_part(tag_ids),
+                    "is_counter_attack": TAG_COUNTER_ATTACK in tag_ids,
+                    "prev_event": None if prev is None else prev.name,
+                    "prev_seconds_before": (
+                        None
+                        if prev is None
+                        else round(event.event_sec - prev.event_sec, 3)
+                    ),
+                    "is_goal": TAG_GOAL in tag_ids,
+                }
             )
-        last_by_team[team_id] = event
+        last_by_team[event.team_id] = event
 
 
 def competition_of(member: str) -> str:
@@ -147,6 +119,11 @@ def competition_of(member: str) -> str:
     return Path(member).stem.removeprefix("events_")
 
 
+def read_events(raw_json: bytes) -> list[Event]:
+    """大会の JSON をそのまま pydantic で読み、イベントの並びにする。"""
+    return _EVENTS.validate_json(raw_json)
+
+
 def read_shots(events_path: Path = DEFAULT_EVENTS_PATH) -> list[Shot]:
     """`events.zip` を展開せずに読み、全大会のシュートを抜き出す。
 
@@ -155,7 +132,7 @@ def read_shots(events_path: Path = DEFAULT_EVENTS_PATH) -> list[Shot]:
     shots: list[Shot] = []
     with zipfile.ZipFile(events_path) as z:
         for member in sorted(z.namelist()):
-            events = cast("list[dict[str, Any]]", json.loads(z.read(member)))
+            events = read_events(z.read(member))
             shots.extend(extract_shots(events, competition_of(member)))
     return shots
 
@@ -175,8 +152,22 @@ def write_shots(shots: Iterable[Shot], output_path: Path) -> None:
         writer = csv.writer(f, lineterminator="\n")
         writer.writerow(COLUMNS)
         for shot in shots:
-            row = asdict(shot)
+            row = shot.model_dump()
             writer.writerow([_csv_value(row[c]) for c in COLUMNS])
+
+
+def load_shots_csv(path: Path = DEFAULT_OUTPUT_PATH) -> list[Shot]:
+    """シュートの表の CSV を読み戻し、1行ずつモデルで確かめる。
+
+    Raises:
+        ValueError: 列の並びが表の決まりと違う場合。
+        pydantic.ValidationError: 行が決まりに合わない場合。
+    """
+    with path.open(encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames != COLUMNS:
+            raise ValueError(f"{path} の列が違う: {reader.fieldnames}")
+        return [Shot.model_validate(row) for row in reader]
 
 
 def main() -> int:

@@ -41,3 +41,4 @@ mise run fix     # ruff の自動修正と format
 
 - [0001](./decisions/0001-source-data-placement.md): 元データはすべて落として使い、zip は展開せずに読む
 - [0002](./decisions/0002-shots-table.md): シュートの表は 3種類を 1つの CSV にし、シュートのあとに決まる情報とタグ 201 は入れない
+- [0003](./decisions/0003-pydantic-models.md): 元データのイベントとシュートの表の 1行を pydantic のモデルにして確かめる

@@ -3,7 +3,6 @@
 速いテストは作り物のイベントで、slow は元データで確かめる。
 """
 
-import csv
 import json
 import zipfile
 from collections import Counter
@@ -11,17 +10,23 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
+from football_xg_vs_llm.models import COLUMNS, Event
 from football_xg_vs_llm.shots import (
-    COLUMNS,
+    DEFAULT_OUTPUT_PATH,
     competition_of,
     extract_shots,
+    load_shots_csv,
+    read_events,
     read_shots,
     write_shots,
 )
 
+BODY_PARTS = {401, 402, 403}
 
-def _event(
+
+def _raw(
     event_id: int,
     sub_event_id: int | str,
     *,
@@ -35,6 +40,7 @@ def _event(
     x: int = 80,
     y: int = 50,
 ) -> dict[str, Any]:
+    """元データの形（camelCase の辞書）のイベント。"""
     return {
         "id": id_,
         "eventId": event_id,
@@ -51,8 +57,19 @@ def _event(
     }
 
 
-def _shot(**kwargs: Any) -> dict[str, Any]:
-    return _event(10, 100, name="Shot", **kwargs)
+def _raw_shot(*, tags: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Any]:
+    """普通のシュート。体の部位のタグがなければ右足を付ける。"""
+    if not BODY_PARTS & set(tags):
+        tags = (*tags, 402)
+    return _raw(10, 100, name="Shot", tags=tags, **kwargs)
+
+
+def _event(*args: Any, **kwargs: Any) -> Event:
+    return Event.model_validate(_raw(*args, **kwargs))
+
+
+def _shot(**kwargs: Any) -> Event:
+    return Event.model_validate(_raw_shot(**kwargs))
 
 
 def test_extracts_three_kinds_and_skips_other_events() -> None:
@@ -103,8 +120,8 @@ def test_previous_event_resets_at_a_new_period_or_match() -> None:
     shots = list(extract_shots(events, "England"))
 
     assert [(s.prev_event, s.prev_seconds_before) for s in shots] == [
-        ("", None),
-        ("", None),
+        (None, None),
+        (None, None),
     ]
 
 
@@ -134,24 +151,85 @@ def test_competition_name_comes_from_the_file_name() -> None:
     assert competition_of("events_World_Cup.json") == "World_Cup"
 
 
-def test_read_and_write_round_trip(tmp_path: Path) -> None:
+def test_event_model_evens_out_the_source_types() -> None:
+    raw = _raw(8, "", id_=1)
+    raw["teamId"] = "1609"
+    raw["eventSec"] = 3
+
+    (event,) = read_events(json.dumps([raw]).encode())
+
+    assert event.sub_event_id is None
+    assert event.team_id == 1609
+    assert event.event_sec == 3.0
+
+
+def test_event_model_rejects_a_missing_field() -> None:
+    raw = _raw(8, 85, id_=1)
+    del raw["teamId"]
+
+    with pytest.raises(ValidationError):
+        read_events(json.dumps([raw]).encode())
+
+
+def test_shot_without_a_body_part_tag_is_rejected() -> None:
+    events = [_event(10, 100, id_=1, name="Shot")]
+
+    with pytest.raises(ValidationError):
+        list(extract_shots(events, "England"))
+
+
+def test_shot_outside_the_pitch_is_rejected() -> None:
+    events = [_shot(id_=1, x=101)]
+
+    with pytest.raises(ValidationError):
+        list(extract_shots(events, "England"))
+
+
+def test_unknown_competition_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        list(extract_shots([_shot(id_=1)], "Netherlands"))
+
+
+def test_read_write_and_load_round_trip(tmp_path: Path) -> None:
     events_path = tmp_path / "events.zip"
     with zipfile.ZipFile(events_path, "w") as z:
-        spain = [_shot(id_=9, tags=(101,))]
+        spain = [_raw_shot(id_=9, tags=(101,))]
         z.writestr("events_Spain.json", json.dumps(spain))
-        z.writestr("events_England.json", json.dumps([_shot(id_=8)]))
+        z.writestr("events_England.json", json.dumps([_raw_shot(id_=8)]))
     output = tmp_path / "out" / "shots.csv"
+    shots = read_shots(events_path)
 
-    write_shots(read_shots(events_path), output)
+    write_shots(shots, output)
 
-    with output.open(encoding="utf-8", newline="") as f:
-        rows = list(csv.DictReader(f))
-    assert list(rows[0]) == COLUMNS
-    assert [(r["competition"], r["shot_id"], r["is_goal"]) for r in rows] == [
-        ("England", "8", "0"),
-        ("Spain", "9", "1"),
-    ]
-    assert rows[0]["prev_seconds_before"] == ""
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == ",".join(COLUMNS)
+    assert lines[1].endswith(",shot,80,50,right_foot,0,,,0")
+    assert load_shots_csv(output) == shots
+
+
+def test_load_rejects_a_broken_row(tmp_path: Path) -> None:
+    path = tmp_path / "shots.csv"
+    header = ",".join(COLUMNS)
+    row = "1,England,100,1H,3.0,1,7,shot,80,50,right_foot,0,Cross,,0"
+    path.write_text(f"{header}\n{row}\n", encoding="utf-8")
+
+    # prev_event があるのに prev_seconds_before がない
+    with pytest.raises(ValidationError):
+        load_shots_csv(path)
+
+
+def test_load_rejects_unexpected_columns(tmp_path: Path) -> None:
+    path = tmp_path / "shots.csv"
+    path.write_text("shot_id,is_goal\n1,0\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="列が違う"):
+        load_shots_csv(path)
+
+
+def test_repository_table_follows_the_model() -> None:
+    shots = load_shots_csv(DEFAULT_OUTPUT_PATH)
+
+    assert len(shots) == 45945
 
 
 @pytest.mark.slow
@@ -173,4 +251,3 @@ def test_counts_match_the_source_data() -> None:
         "free_kick": 137,
         "penalty": 477,
     }
-    assert all(s.body_part for s in shots)
