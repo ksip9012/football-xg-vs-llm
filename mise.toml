@@ -96,6 +96,10 @@ run = "uv run python -W ignore::SyntaxWarning -m football_xg_vs_llm.llm_claude -
 description = "同じ 2,000本ほどで、Claude・Gemini・統計モデルを比べる（decisions/0009）"
 run = "uv run python -W ignore::SyntaxWarning -m football_xg_vs_llm.compare_claude"
 
+[tasks.summary-figure]
+description = "LLM − 統計モデルのログ損失の差と 95% の幅を 1枚にまとめる（README 用。notes/figures/llm_summary.png）"
+run = "uv run python -W ignore::SyntaxWarning -m football_xg_vs_llm.summary_figure"
+
 [tasks.compare-llm]
 description = "テストの 8,626本で Gemini と統計モデルを比べ、差の 95% の幅と図を出す（decisions/0006）"
 run = "uv run python -W ignore::SyntaxWarning -m football_xg_vs_llm.compare_llm"
