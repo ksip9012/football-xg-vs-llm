@@ -15,6 +15,8 @@ from sklearn import metrics as sk_metrics
 from football_xg_vs_llm.libraries import fit_sklearn, fit_statsmodels
 from football_xg_vs_llm.models import Shot
 from football_xg_vs_llm.xg import (
+    GROUP_ORDER,
+    PREV_GROUPS,
     Floats,
     brier_score,
     build_dataset,
@@ -23,6 +25,7 @@ from football_xg_vs_llm.xg import (
     fit_numpy,
     log_loss,
     predict,
+    prev_group,
     roc_auc,
     split_by_match,
 )
@@ -158,3 +161,53 @@ def test_calibration_splits_into_equal_bins() -> None:
     assert [b.count for b in bins] == [2, 2]
     assert bins[0].mean_prob == pytest.approx(0.15)
     assert bins[1].goal_rate == 1.0
+
+
+def test_prev_group_puts_rare_and_missing_actions_in_other() -> None:
+    base = _shot(1, x=90, match=1, goal=False, head=False)
+
+    def group(event: str | None) -> str:
+        seconds = None if event is None else 1.0
+        return prev_group(
+            base.model_copy(
+                update={"prev_event": event, "prev_seconds_before": seconds}
+            )
+        )
+
+    assert group("Smart pass") == "through_ball"
+    assert group("Free kick cross") == "cross"
+    assert group("Penalty") == "rebound"
+    assert group("Throw in") == "pass"
+    assert group("Touch") == "dribble_duel"
+    assert group("Offside") == "other"
+    assert group(None) == "other"
+    assert set(PREV_GROUPS.values()) <= set(GROUP_ORDER)
+
+
+def test_build_dataset_with_context_adds_groups_and_counter() -> None:
+    cross = _shot(1, x=90, match=1, goal=True, head=True).model_copy(
+        update={
+            "prev_event": "Cross",
+            "prev_seconds_before": 1.0,
+            "is_counter_attack": True,
+        }
+    )
+    plain = _shot(2, x=85, match=2, goal=False, head=False).model_copy(
+        update={"prev_event": "Simple pass", "prev_seconds_before": 2.0}
+    )
+
+    data = build_dataset([cross, plain], with_head=True, with_context=True)
+
+    # 基準の pass には列を作らない。8組とカウンターで、3 + 8 + 1 列
+    assert data.names[:3] == ("distance", "angle", "head")
+    assert "prev_pass" not in data.names
+    assert len(data.names) == 3 + 8 + 1
+    row = dict(zip(data.names, data.features[0], strict=True))
+    assert row["prev_cross"] == 1.0
+    assert row["counter"] == 1.0
+    assert sum(row[n] for n in data.names if n.startswith("prev_")) == 1.0
+    plain_row = dict(zip(data.names, data.features[1], strict=True))
+    assert all(
+        plain_row[n] == 0.0 for n in data.names if n.startswith("prev_")
+    )
+    assert plain_row["counter"] == 0.0

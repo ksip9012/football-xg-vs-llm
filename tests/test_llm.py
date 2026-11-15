@@ -8,6 +8,7 @@ import pytest
 from google.genai import types
 
 from football_xg_vs_llm.llm import (
+    RETURN_LINE,
     SYSTEM_PROMPT,
     Features,
     RunConfig,
@@ -15,6 +16,7 @@ from football_xg_vs_llm.llm import (
     call_batch,
     features_of,
     run,
+    system_prompt,
 )
 from football_xg_vs_llm.models import Shot
 
@@ -179,3 +181,53 @@ def test_run_resumes_from_the_file(tmp_path: Path) -> None:
     assert again.models.sent == []
     assert len(result.xg) == 4
     assert len(path.read_text().splitlines()) == 2
+
+
+def test_context_features_add_the_group_and_counter() -> None:
+    shot = _shot(90, 50, "right_foot").model_copy(
+        update={
+            "prev_event": "Smart pass",
+            "prev_seconds_before": 1.0,
+            "is_counter_attack": True,
+        }
+    )
+
+    (plain,) = features_of([shot])
+    (wide,) = features_of([shot], with_context=True)
+
+    assert plain.previous_action is None
+    assert plain.counter_attack is None
+    assert wide.previous_action == "through_ball"
+    assert wide.counter_attack is True
+
+
+def test_context_payload_and_prompt() -> None:
+    client = _Client()
+    batch = [
+        Features(
+            shot_id=1,
+            distance_m=10.0,
+            angle_deg=30.0,
+            body="foot",
+            previous_action="cross",
+            counter_attack=False,
+        )
+    ]
+
+    call_batch(client, batch, "LOW", context=True)
+
+    (sent,) = client.models.sent[0]["shots"]
+    assert sent["previous_action"] == "cross"
+    assert sent["counter_attack"] is False
+    prompt = client.models.configs[0].system_instruction
+    assert prompt == system_prompt(context=True)
+    assert isinstance(prompt, str)
+    # 項目の説明のあとに足し、答えの指示は最後のまま
+    assert prompt.startswith(SYSTEM_PROMPT.removesuffix(RETURN_LINE))
+    assert prompt.endswith(RETURN_LINE)
+    for group in ("through_ball", "rebound", "dribble_duel", "other"):
+        assert f'"{group}"' in prompt
+
+
+def test_plain_prompt_is_the_one_used_before() -> None:
+    assert system_prompt(context=False) == SYSTEM_PROMPT

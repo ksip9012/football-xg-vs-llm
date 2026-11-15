@@ -6,7 +6,7 @@
 - numpy だけで書いたロジスティック回帰（ニュートン法）
 
 scikit-learn と statsmodels で同じことをするのは `libraries`。決めごとは
-decisions/0004。
+decisions/0004（直前のプレーとカウンターを足すときの組は decisions/0007）。
 """
 
 from collections.abc import Sequence
@@ -26,6 +26,55 @@ GOAL_WIDTH = 7.32
 
 # 自陣から打ったシュートは、向きが逆に記録されたものが混ざっているので外す
 MIN_X = 50
+
+# 直前のプレー（元データの `subEventName`、普通のシュートで 30種類）を、
+# プレーの性質で 9組にまとめる（decisions/0007）。ここにない種類と、直前が
+# ないものは `other`
+PREV_GROUPS: dict[str, str] = {
+    "Smart pass": "through_ball",
+    "Cross": "cross",
+    "Free kick cross": "cross",
+    "Corner": "corner",
+    "Shot": "rebound",
+    "Free kick shot": "rebound",
+    "Penalty": "rebound",
+    "Reflexes": "rebound",
+    "Save attempt": "rebound",
+    "High pass": "lofted_pass",
+    "Head pass": "lofted_pass",
+    "Launch": "lofted_pass",
+    "Simple pass": "pass",
+    "Hand pass": "pass",
+    "Throw in": "pass",
+    "Goal kick": "pass",
+    "Free Kick": "pass",
+    "Air duel": "aerial_duel",
+    "Ground attacking duel": "dribble_duel",
+    "Ground loose ball duel": "dribble_duel",
+    "Ground defending duel": "dribble_duel",
+    "Acceleration": "dribble_duel",
+    "Touch": "dribble_duel",
+}
+# 組の並び。基準（係数を置かない組）はいちばん多い `pass`
+GROUP_ORDER = (
+    "pass",
+    "through_ball",
+    "cross",
+    "corner",
+    "rebound",
+    "lofted_pass",
+    "aerial_duel",
+    "dribble_duel",
+    "other",
+)
+BASE_GROUP = "pass"
+
+
+def prev_group(shot: Shot) -> str:
+    """シュートの直前のプレーの組（`GROUP_ORDER` のどれか）。"""
+    if shot.prev_event is None:
+        return "other"
+    return PREV_GROUPS.get(shot.prev_event, "other")
 
 
 def to_meters(x: Floats, y: Floats) -> tuple[Floats, Floats]:
@@ -77,12 +126,16 @@ def is_modeled(shot: Shot) -> bool:
     return shot.shot_type == "shot" and shot.x >= MIN_X
 
 
-def build_dataset(shots: Sequence[Shot], *, with_head: bool) -> Dataset:
+def build_dataset(
+    shots: Sequence[Shot], *, with_head: bool, with_context: bool = False
+) -> Dataset:
     """普通のシュート（自陣からのものは外す）を、特徴の行列にする。
 
     Args:
         shots: シュートの表の行。
         with_head: 特徴に「頭か体か」（1.0 / 0.0）を足すか。
+        with_context: 特徴に、直前のプレーの組（基準の `pass` 以外の 8組を
+            1.0 / 0.0 で）と、カウンターかどうか（1.0 / 0.0）を足すか。
     """
     rows = [s for s in shots if is_modeled(s)]
     x = np.array([s.x for s in rows], dtype=np.float64)
@@ -94,6 +147,18 @@ def build_dataset(shots: Sequence[Shot], *, with_head: bool) -> Dataset:
         head = [s.body_part == "head_or_body" for s in rows]
         columns.append(np.array(head, dtype=np.float64))
         names.append("head")
+    if with_context:
+        groups = [prev_group(s) for s in rows]
+        for group in GROUP_ORDER:
+            if group == BASE_GROUP:
+                continue
+            columns.append(
+                np.array([g == group for g in groups], dtype=np.float64)
+            )
+            names.append(f"prev_{group}")
+        counter = [s.is_counter_attack for s in rows]
+        columns.append(np.array(counter, dtype=np.float64))
+        names.append("counter")
     return Dataset(
         features=np.column_stack(columns),
         names=tuple(names),

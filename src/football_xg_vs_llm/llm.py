@@ -3,6 +3,8 @@
 - 渡すのは統計モデルと同じ情報だけ（距離・ゴールの見える角度・頭か足か）。
   選手の名前・チーム・試合の日付は渡さない（有名な試合の結果を LLM が
   覚えていて、答えが漏れるおそれがあるため）
+- 広い情報の回（`RunConfig.context`）では、統計モデルと同じ直前のプレーの組と
+  カウンターかどうかも渡す（decisions/0007）
 - 順番を混ぜて `batch_size` 本ずつ送り、`shot_id` は送るときだけ 1 からの
   連番に置き換える（同じ試合のシュートや元データの ID の並びから、答えが
   漏れないように）
@@ -27,7 +29,7 @@ from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from football_xg_vs_llm.models import Shot
-from football_xg_vs_llm.xg import distance_and_angle
+from football_xg_vs_llm.xg import distance_and_angle, prev_group
 
 MODEL = "gemini-3.8-flash"
 # 100万トークンあたりの単価（ドル）。Step2 で 2026-11-03 に確かめた値で、
@@ -52,6 +54,35 @@ to the two goal posts (a larger angle means more of the goal is visible; \
 
 Return one prediction for every id, and nothing else."""
 
+# 広い情報の回で、上の項目の説明の後ろ（答えの指示の前）に足すもの。組の名前は
+# 統計モデルと同じ（decisions/0007）
+RETURN_LINE = "\n\nReturn one prediction for every id, and nothing else."
+CONTEXT_PROMPT = """
+- previous_action: the shooting team's last action before the shot, grouped \
+as one of:
+  - "pass": a simple pass, throw-in, goal kick or short free kick
+  - "through_ball": a pass played through or behind the defence
+  - "cross": a cross, from open play or a free kick
+  - "corner": a corner kick
+  - "rebound": the ball came back from an earlier shot or a save
+  - "lofted_pass": a high pass, headed pass or long launch
+  - "aerial_duel": an aerial duel
+  - "dribble_duel": a dribble, ground duel, loose-ball duel or touch
+  - "other": anything else, or no previous action
+- counter_attack: true if the shot came from a counter-attack"""
+
+PrevAction = Literal[
+    "pass",
+    "through_ball",
+    "cross",
+    "corner",
+    "rebound",
+    "lofted_pass",
+    "aerial_duel",
+    "dribble_duel",
+    "other",
+]
+
 
 class ShotInput(BaseModel):
     """LLM に渡すシュート 1本。"""
@@ -62,6 +93,8 @@ class ShotInput(BaseModel):
     distance_m: float
     angle_deg: float
     body: Literal["foot", "head"]
+    previous_action: PrevAction | None = None
+    counter_attack: bool | None = None
 
 
 class Prediction(BaseModel):
@@ -85,10 +118,17 @@ class Features:
     distance_m: float
     angle_deg: float
     body: Literal["foot", "head"]
+    previous_action: PrevAction | None = None
+    counter_attack: bool | None = None
 
 
-def features_of(shots: Sequence[Shot]) -> list[Features]:
-    """シュートの表の行から、LLM に渡す情報を作る（小数 1桁）。"""
+def features_of(
+    shots: Sequence[Shot], *, with_context: bool = False
+) -> list[Features]:
+    """シュートの表の行から、LLM に渡す情報を作る（小数 1桁）。
+
+    `with_context` なら、直前のプレーの組とカウンターかどうかも入れる。
+    """
     x = np.array([s.x for s in shots], dtype=np.float64)
     y = np.array([s.y for s in shots], dtype=np.float64)
     distance, angle = distance_and_angle(x, y)
@@ -98,6 +138,10 @@ def features_of(shots: Sequence[Shot]) -> list[Features]:
             distance_m=round(float(d), 1),
             angle_deg=round(float(np.degrees(a)), 1),
             body="head" if s.body_part == "head_or_body" else "foot",
+            previous_action=(
+                cast("PrevAction", prev_group(s)) if with_context else None
+            ),
+            counter_attack=s.is_counter_attack if with_context else None,
         )
         for s, d, a in zip(shots, distance, angle, strict=True)
     ]
@@ -143,17 +187,27 @@ class RunConfig:
         thinking_level: 考える量（`MINIMAL`・`LOW`・`MEDIUM`・`HIGH`）。
         batch_size: 1回の呼び出しに入れる本数。
         seed: 順番を混ぜる乱数の種。
+        context: 直前のプレーの組とカウンターも渡す回か（説明もそれを足す）。
     """
 
     name: str
     thinking_level: str
     batch_size: int = 50
     seed: int = 2026
+    context: bool = False
 
 
-def _config(level: str) -> types.GenerateContentConfig:
+def system_prompt(*, context: bool) -> str:
+    """LLM への説明。広い情報の回は、項目の説明の後ろに、足す項目を入れる。"""
+    if not context:
+        return SYSTEM_PROMPT
+    head = SYSTEM_PROMPT.removesuffix(RETURN_LINE)
+    return head + CONTEXT_PROMPT + RETURN_LINE
+
+
+def _config(level: str, *, context: bool) -> types.GenerateContentConfig:
     return types.GenerateContentConfig(
-        system_instruction=SYSTEM_PROMPT,
+        system_instruction=system_prompt(context=context),
         response_mime_type="application/json",
         response_schema=Predictions,
         thinking_config=types.ThinkingConfig(
@@ -174,21 +228,30 @@ def batches(
 
 
 def _payload(batch: Sequence[Features]) -> str:
-    """1回ぶんのシュートを、連番の ID を付けた JSON にする。"""
+    """1回ぶんのシュートを、連番の ID を付けた JSON にする。
+
+    広い情報がないシュートは、その項目を入れない（前の回と同じ JSON になる）。
+    """
     items = [
         ShotInput(
             id=i,
             distance_m=f.distance_m,
             angle_deg=f.angle_deg,
             body=f.body,
-        ).model_dump()
+            previous_action=f.previous_action,
+            counter_attack=f.counter_attack,
+        ).model_dump(exclude_none=True)
         for i, f in enumerate(batch, start=1)
     ]
     return json.dumps({"shots": items}, ensure_ascii=False)
 
 
 def call_batch(
-    client: Client, batch: Sequence[Features], level: str
+    client: Client,
+    batch: Sequence[Features],
+    level: str,
+    *,
+    context: bool = False,
 ) -> dict[str, Any]:
     """1回呼び、結果を記録の形（JSONL の 1行）で返す。
 
@@ -196,7 +259,9 @@ def call_batch(
     """
     start = time.perf_counter()
     response = client.models.generate_content(
-        model=MODEL, contents=_payload(batch), config=_config(level)
+        model=MODEL,
+        contents=_payload(batch),
+        config=_config(level, context=context),
     )
     seconds = time.perf_counter() - start
     usage = response.usage_metadata
@@ -287,7 +352,12 @@ def run(
         if key not in records:
             record: dict[str, Any] = {
                 "batch": key,
-                **call_batch(client, batch, config.thinking_level),
+                **call_batch(
+                    client,
+                    batch,
+                    config.thinking_level,
+                    context=config.context,
+                ),
             }
             _append(path, record)
             records[key] = record
@@ -299,7 +369,12 @@ def run(
     if missing and "retry" not in records:
         retry: dict[str, Any] = {
             "batch": "retry",
-            **call_batch(client, missing, config.thinking_level),
+            **call_batch(
+                client,
+                missing,
+                config.thinking_level,
+                context=config.context,
+            ),
         }
         _append(path, retry)
         records["retry"] = retry

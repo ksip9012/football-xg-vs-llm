@@ -6,6 +6,11 @@
 decisions/0005 の集計と図に、そのまま渡せる。
 
 `mise run llm-test`（料金がかかる。答えのファイルがあれば、その回は呼ばない）。
+
+`--context` を付けると、直前のプレーの組とカウンターも渡す回になり
+（decisions/0007）、答えは `data/llm_runs/test/low_context.jsonl`、確率は
+`data/xg_gemini_context.csv` に置く（前の回のファイルは触らない）。
+`mise run llm-test-context`。
 """
 
 import sys
@@ -24,6 +29,12 @@ RUN_PATH = Path("data/llm_runs/test/low.jsonl")
 XG_PATH = Path("data/xg_gemini.csv")
 CONFIG = RunConfig(name="test_low", thinking_level="LOW", batch_size=50)
 
+CONTEXT_RUN_PATH = Path("data/llm_runs/test/low_context.jsonl")
+CONTEXT_XG_PATH = Path("data/xg_gemini_context.csv")
+CONTEXT_CONFIG = RunConfig(
+    name="test_low_context", thinking_level="LOW", batch_size=50, context=True
+)
+
 
 def test_shots(shots: Sequence[Shot]) -> list[Shot]:
     """最初の xG と同じテストのシュート（試合単位の 2割）。"""
@@ -33,13 +44,21 @@ def test_shots(shots: Sequence[Shot]) -> list[Shot]:
     return [s for s in shots if is_modeled(s) and s.shot_id in test_ids]
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """テストのシュートを Gemini に答えさせ、確率の CSV を書く。"""
+    args = sys.argv[1:] if argv is None else list(argv)
+    context = "--context" in args
+    config, run_path, xg_path = (
+        (CONTEXT_CONFIG, CONTEXT_RUN_PATH, CONTEXT_XG_PATH)
+        if context
+        else (CONFIG, RUN_PATH, XG_PATH)
+    )
     shots = test_shots(load_shots_csv())
-    result = run(genai.Client(), features_of(shots), CONFIG, RUN_PATH)
-    write_xg(result.xg, XG_PATH)
+    features = features_of(shots, with_context=context)
+    result = run(genai.Client(), features, config, run_path)
+    write_xg(result.xg, xg_path)
     print(
-        f"書いた: {XG_PATH}（{len(result.xg)}本、"
+        f"書いた: {xg_path}（{len(result.xg)}本、"
         f"答えなし {len(result.missing)}本）"
     )
     print(

@@ -47,13 +47,17 @@ mise run figures     # モデルを確かめる図と集計の図（notes/figure
 
 テストの 8,626本（388試合）では、**当たり方の差は見分けられなかった**（AUC は統計モデル 0.7945・Gemini 0.7938、差の 95% の幅 −0.0043〜+0.0026）。答え方もよく似ている（確率の相関 0.979）。ただし Gemini は確率を低めに出す（平均 0.092、実際の率 0.104）。考える量（thinking）を増やしても良くならなかった（500本の試し）。
 
+両方に**直前のプレー（9組にまとめたもの）とカウンター**を足すと、統計モデルは少しよくなり（ログ損失 0.2765 → 0.2747、差の 95% の幅 −0.0037〜−0.0000）、Gemini はよくならなかった（0.2773 → 0.2776）。広い情報どうしでは、統計モデルのほうがよい（ログ損失の差の幅 +0.0005〜+0.0054。AUC の差は見分けられない）。Gemini は、スルーパスやカウンターで確率を上げ、コーナーで下げるなど向きは合っているが、大きさが合わず、低めに出すくせも強くなった（平均 0.087）。
+
 ```bash
 mise run llm-trial     # 500本の試し（data/llm_runs/trial/ に答えがあれば API は呼ばない）
 mise run llm-test      # テストの 8,626本（data/llm_runs/test/。同上）
 mise run compare-llm   # 物差し・差の 95% の幅・図
+mise run llm-test-context  # 直前のプレーとカウンターも渡して、テストの 8,626本
+mise run compare-context   # 3つの情報と広い情報の 4つを比べる
 ```
 
-Vertex AI を使うので、手元の `mise.local.toml`（git の対象外）に `GOOGLE_CLOUD_PROJECT` と `GOOGLE_CLOUD_QUOTA_PROJECT` を書き、`gcloud auth application-default login` でログインしておく。結果は [notes/llm-trial.md](./notes/llm-trial.md)（試し）と [notes/llm-test.md](./notes/llm-test.md)（本番）。
+Vertex AI を使うので、手元の `mise.local.toml`（git の対象外）に `GOOGLE_CLOUD_PROJECT` と `GOOGLE_CLOUD_QUOTA_PROJECT` を書き、`gcloud auth application-default login` でログインしておく。結果は [notes/llm-trial.md](./notes/llm-trial.md)（試し）と [notes/llm-test.md](./notes/llm-test.md)（本番）、[notes/llm-context.md](./notes/llm-context.md)（広い情報）。
 
 ## テストの実行方法
 
@@ -81,3 +85,4 @@ mise run fix     # ruff の自動修正と format
 - [0004](./decisions/0004-first-xg-three-ways.md): 最初の xG は距離と角度のロジスティック回帰にし、numpy・scikit-learn・statsmodels の 3通りで作って比べる
 - [0005](./decisions/0005-cv-aggregates-figures.md): xG は試合単位の交差検証で出して `shot_id, xg` の CSV に置き、選手・チーム・大会ごとに集計して、図は英語のラベルの PNG にする
 - [0006](./decisions/0006-compare-with-llm.md): LLM には統計モデルと同じ情報だけを渡して確率を答えさせ、段階を踏んで本数を増やし、同じ物差しと差の幅で比べる
+- [0007](./decisions/0007-context-features.md): 直前のプレーは性質で 9組にまとめ、カウンターと一緒に、統計モデルと Gemini の両方に同じ形で渡す
