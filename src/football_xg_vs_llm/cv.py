@@ -30,6 +30,8 @@ from football_xg_vs_llm.xg import (
 )
 
 DEFAULT_XG_PATH = Path("data/xg_stat.csv")
+# 直前のプレーとカウンターも足したモデルの xG（decisions/0007）
+CONTEXT_XG_PATH = Path("data/xg_stat_context.csv")
 FOLDS = 5
 SEED = 2026
 
@@ -54,13 +56,18 @@ def assign_folds(
 
 
 def out_of_fold_xg(
-    shots: Sequence[Shot], *, folds: int = FOLDS, seed: int = SEED
+    shots: Sequence[Shot],
+    *,
+    folds: int = FOLDS,
+    seed: int = SEED,
+    with_context: bool = False,
 ) -> dict[int, float]:
     """シュートの ID → xG（その試合の組を外して学習したモデルの値）。
 
     特徴は距離・角度・頭か体か（decisions/0004 の 2つ目の組）。
+    `with_context` なら、直前のプレーの組とカウンターも足す（decisions/0007）。
     """
-    data = build_dataset(shots, with_head=True)
+    data = build_dataset(shots, with_head=True, with_context=with_context)
     fold = assign_folds(data.match_ids, folds=folds, seed=seed)
     xg = np.empty(len(data.goals))
     for k in range(folds):
@@ -88,19 +95,27 @@ def load_xg(path: Path = DEFAULT_XG_PATH) -> dict[int, float]:
 
 
 def main() -> int:
-    """`data/shots.csv` から `data/xg_stat.csv` を作る（`mise run xg-cv`）。"""
+    """`data/shots.csv` から、2つの xG の CSV を作る（`mise run xg-cv`）。
+
+    `data/xg_stat.csv`（距離・角度・頭か体か）と、`data/xg_stat_context.csv`
+    （直前のプレーの組とカウンターも足したもの）。
+    """
     shots = load_shots_csv()
-    xg = out_of_fold_xg(shots)
-    write_xg(xg, DEFAULT_XG_PATH)
     data = build_dataset(shots, with_head=True)
-    probs = np.array([xg[int(s)] for s in data.shot_ids])
-    print(f"書いた: {DEFAULT_XG_PATH}（{len(xg)}本、{FOLDS}分割）")
-    print(
-        f"全体: ログ損失 {log_loss(data.goals, probs):.5f}・"
-        f"ブライアスコア {brier_score(data.goals, probs):.5f}・"
-        f"AUC {roc_auc(data.goals, probs):.4f}・"
-        f"xG の合計 {probs.sum():.1f}・ゴール {int(data.goals.sum())}"
-    )
+    for path, with_context in (
+        (DEFAULT_XG_PATH, False),
+        (CONTEXT_XG_PATH, True),
+    ):
+        xg = out_of_fold_xg(shots, with_context=with_context)
+        write_xg(xg, path)
+        probs = np.array([xg[int(s)] for s in data.shot_ids])
+        print(f"書いた: {path}（{len(xg)}本、{FOLDS}分割）")
+        print(
+            f"全体: ログ損失 {log_loss(data.goals, probs):.5f}・"
+            f"ブライアスコア {brier_score(data.goals, probs):.5f}・"
+            f"AUC {roc_auc(data.goals, probs):.4f}・"
+            f"xG の合計 {probs.sum():.1f}・ゴール {int(data.goals.sum())}"
+        )
     return 0
 
 

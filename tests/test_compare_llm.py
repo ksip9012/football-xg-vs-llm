@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from football_xg_vs_llm.compare_context import aligned
 from football_xg_vs_llm.compare_llm import (
     bootstrap_differences,
     calibration_figure,
@@ -101,3 +102,19 @@ def test_figures_are_written(tmp_path: Path) -> None:
 
     for name in ("calibration.png", "map.png"):
         assert (tmp_path / name).read_bytes()[:4] == b"\x89PNG"
+
+
+def test_aligned_keeps_shots_that_every_model_answered() -> None:
+    shots = [
+        _shot(i, match=i % 3, x=90, y=50, goal=i % 2 == 0) for i in range(1, 5)
+    ]
+    xgs = {
+        "a": {1: 0.1, 2: 0.2, 3: 0.3, 4: 0.4},
+        "b": {1: 0.5, 2: 0.6, 4: 0.7},
+    }
+
+    rows, goals, probs = aligned(shots, xgs)
+
+    assert [s.shot_id for s in rows] == [1, 2, 4]
+    assert list(goals) == [0.0, 1.0, 1.0]
+    assert list(probs["b"]) == [0.5, 0.6, 0.7]
