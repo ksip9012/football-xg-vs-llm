@@ -80,6 +80,10 @@ run = "uv run python -W ignore::SyntaxWarning -m football_xg_vs_llm.llm_test --c
 description = "テストの 8,626本で、統計モデルと Gemini の 3つの情報と広い情報の 4つを比べる（decisions/0007）"
 run = "uv run python -W ignore::SyntaxWarning -m football_xg_vs_llm.compare_context"
 
+[tasks.recalibrate]
+description = "Gemini の低めに出すくせを、テストの中の試合単位の 5分割で直して、統計モデルと比べる（decisions/0008）"
+run = "uv run python -W ignore::SyntaxWarning -m football_xg_vs_llm.recalibrate"
+
 [tasks.compare-llm]
 description = "テストの 8,626本で Gemini と統計モデルを比べ、差の 95% の幅と図を出す（decisions/0006）"
 run = "uv run python -W ignore::SyntaxWarning -m football_xg_vs_llm.compare_llm"
