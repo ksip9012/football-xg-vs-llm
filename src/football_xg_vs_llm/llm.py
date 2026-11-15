@@ -19,7 +19,7 @@
 import json
 import random
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol, cast
@@ -227,7 +227,7 @@ def batches(
         yield shuffled[i : i + batch_size]
 
 
-def _payload(batch: Sequence[Features]) -> str:
+def payload_json(batch: Sequence[Features]) -> str:
     """1回ぶんのシュートを、連番の ID を付けた JSON にする。
 
     広い情報がないシュートは、その項目を入れない（前の回と同じ JSON になる）。
@@ -260,24 +260,50 @@ def call_batch(
     start = time.perf_counter()
     response = client.models.generate_content(
         model=MODEL,
-        contents=_payload(batch),
+        contents=payload_json(batch),
         config=_config(level, context=context),
     )
     seconds = time.perf_counter() - start
     usage = response.usage_metadata
+    return make_record(
+        batch,
+        response.text,
+        prompt_tokens=(usage.prompt_token_count if usage else None) or 0,
+        output_tokens=(usage.candidates_token_count if usage else None) or 0,
+        thought_tokens=(usage.thoughts_token_count if usage else None) or 0,
+        seconds=seconds,
+    )
+
+
+def make_record(
+    batch: Sequence[Features],
+    text: str | None,
+    *,
+    prompt_tokens: int,
+    output_tokens: int,
+    thought_tokens: int,
+    seconds: float,
+    error: str | None = None,
+) -> dict[str, Any]:
+    """答えの文字列を確かめ、記録の形（JSONL の 1行）にする。
+
+    答えの形が崩れていても止まらず、`error` に理由を書いて返す。連番の ID は、
+    元データの `shot_id` に戻す。
+    """
     record: dict[str, Any] = {
         "shot_ids": [f.shot_id for f in batch],
-        "raw": response.text,
+        "raw": text,
         "predictions": {},
-        "prompt_tokens": (usage.prompt_token_count if usage else None) or 0,
-        "output_tokens": (usage.candidates_token_count if usage else None)
-        or 0,
-        "thought_tokens": (usage.thoughts_token_count if usage else None) or 0,
+        "prompt_tokens": prompt_tokens,
+        "output_tokens": output_tokens,
+        "thought_tokens": thought_tokens,
         "seconds": round(seconds, 3),
-        "error": None,
+        "error": error,
     }
+    if error is not None:
+        return record
     try:
-        parsed = Predictions.model_validate_json(response.text or "")
+        parsed = Predictions.model_validate_json(text or "")
     except ValidationError as e:
         record["error"] = f"形が崩れている: {e.error_count()}件"
         return record
@@ -323,26 +349,46 @@ class RunResult:
     output_tokens: int
     thought_tokens: int
     seconds: float
+    price_input_per_m: float = PRICE_INPUT_PER_M
+    price_output_per_m: float = PRICE_OUTPUT_PER_M
 
     @property
     def cost(self) -> float:
         """費用（ドル）。思考のトークンも出力として数える。"""
         out = self.output_tokens + self.thought_tokens
         return (
-            self.prompt_tokens * PRICE_INPUT_PER_M + out * PRICE_OUTPUT_PER_M
+            self.prompt_tokens * self.price_input_per_m
+            + out * self.price_output_per_m
         ) / 1_000_000
 
 
+# 1回ぶんのシュートを送り、記録の形（`make_record`）で返すもの
+Caller = Callable[[Sequence[Features]], dict[str, Any]]
+
+
 def run(
-    client: Client,
+    client: Client | None,
     features: Sequence[Features],
     config: RunConfig,
     path: Path,
+    *,
+    caller: Caller | None = None,
+    prices: tuple[float, float] = (PRICE_INPUT_PER_M, PRICE_OUTPUT_PER_M),
 ) -> RunResult:
     """試しを 1回動かす。`path` の JSONL に、終わった回があれば飛ばす。
 
     最後に、答えのなかったシュートだけをまとめて、もう一度だけ送る。
+    `caller` を渡すと、Gemini の代わりにそれで送る（`prices` はその単価）。
     """
+
+    def gemini(batch: Sequence[Features]) -> dict[str, Any]:
+        if client is None:
+            raise ValueError("client か caller のどちらかを渡す")
+        return call_batch(
+            client, batch, config.thinking_level, context=config.context
+        )
+
+    send = caller or gemini
     records = _load_records(path)
     planned = list(
         batches(features, batch_size=config.batch_size, seed=config.seed)
@@ -350,15 +396,7 @@ def run(
     for i, batch in enumerate(planned):
         key = f"{i:04d}"
         if key not in records:
-            record: dict[str, Any] = {
-                "batch": key,
-                **call_batch(
-                    client,
-                    batch,
-                    config.thinking_level,
-                    context=config.context,
-                ),
-            }
+            record: dict[str, Any] = {"batch": key, **send(batch)}
             _append(path, record)
             records[key] = record
 
@@ -369,12 +407,7 @@ def run(
     if missing and "retry" not in records:
         retry: dict[str, Any] = {
             "batch": "retry",
-            **call_batch(
-                client,
-                missing,
-                config.thinking_level,
-                context=config.context,
-            ),
+            **send(missing),
         }
         _append(path, retry)
         records["retry"] = retry
@@ -392,4 +425,6 @@ def run(
         output_tokens=sum(r["output_tokens"] for r in records.values()),
         thought_tokens=sum(r["thought_tokens"] for r in records.values()),
         seconds=sum(r["seconds"] for r in records.values()),
+        price_input_per_m=prices[0],
+        price_output_per_m=prices[1],
     )
