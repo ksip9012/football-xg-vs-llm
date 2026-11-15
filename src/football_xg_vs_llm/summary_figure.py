@@ -22,7 +22,11 @@ from pathlib import Path
 import numpy as np
 
 from football_xg_vs_llm.compare_context import aligned, pair_of
-from football_xg_vs_llm.compare_llm import bootstrap_differences
+from football_xg_vs_llm.compare_llm import (
+    CLAUDE_COLOR,
+    GEMINI_COLOR,
+    bootstrap_differences,
+)
 from football_xg_vs_llm.cv import CONTEXT_XG_PATH, DEFAULT_XG_PATH, load_xg
 from football_xg_vs_llm.figures import (
     DEFAULT_FIGURES_DIR,
@@ -40,10 +44,8 @@ from football_xg_vs_llm.recalibrate import recalibrate
 from football_xg_vs_llm.shots import load_shots_csv
 from football_xg_vs_llm.xg import Floats
 
-# dataviz の既定のパレット: カテゴリの 2番目（オレンジ）と 3番目（アクア）。
-# 1番目の青は、ほかの図で統計モデルに使っているので、ここでは使わない
-GEMINI_COLOR = "#eb6834"
-CLAUDE_COLOR = "#1baf7a"
+# 色は compare_llm と同じ（Gemini はアクア、Claude はオレンジ）。青は、ほかの
+# 図で統計モデルに使っているので、ここでは使わない
 COLORS = {"Gemini": GEMINI_COLOR, "Claude": CLAUDE_COLOR}
 ROWS = (
     "Distance, angle, head",
