@@ -28,4 +28,5 @@
 - 依存に matplotlib が増えた。matplotlib は `**kwargs` の型を書いていないので、pyright の strict の「型が一部わからない」の指摘は `figures.py` だけで外した
 - 選手 1人だけ `players.json` に名前がない（`(id …)` と出す）
 - 選ばなかった案: 学習とテストを 1回だけ分けて、テストのシュートだけ集計する（選手ごとの本数が 2割に減る）、xG を表（`data/shots.csv`）の列に足す（LLM の予測と並べるときに表を作り直すことになる）、日本語のラベル（上の文字化け）、mplsoccer でピッチを描く（線を数本描くだけなので依存を増やさなかった）
+- README に載せる図は、2026-11-15 に LLM との比べがひととおり終わってから選んだ。`shot_map.png`（モデルが場所ごとの決まりやすさを捉えているか）・`finishing_split_half.png`（決定力が続くか）・`llm_calibration.png`（Gemini は順位は同じで確率が低め）と、新しく作った `llm_summary.png`（LLM − 統計モデルの差と 95% の幅を 1枚にまとめたもの。色は dataviz の既定のパレットで、青は統計モデル。LLM はブランドの色に寄せて Gemini をアクア、Claude をオレンジにし、`llm_calibration.png` の Gemini もアクアにそろえた（2026-11-15 にユーザーが決めた）
 - あとに回したもの: 状況ごと（直前のイベント・カウンター）、失点側（守備の xG）、試合ごとの xG と勝敗

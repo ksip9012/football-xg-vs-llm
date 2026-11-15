@@ -23,6 +23,8 @@ mise run shots              # シュートの表 data/shots.csv を作り直す�
 
 ゴールまでの距離と、両ポストを見込む角度（と、頭か体か）のロジスティック回帰。numpy で自分で書いたもの・scikit-learn・statsmodels の 3通りで作り、同じ答えになることを確かめた。平均の率だけを出すモデルと比べて、テストの AUC は 0.50 → 0.78（頭か体かを足すと 0.79）。
 
+![Where shots are scored: actual goal rate vs xG](notes/figures/shot_map.png)
+
 ```bash
 mise run xg   # 3通りの係数・物差し・時間を Markdown の表で出す
 ```
@@ -33,6 +35,8 @@ mise run xg   # 3通りの係数・物差し・時間を Markdown の表で出�
 
 試合単位の交差検証で、どのシュートにも「その試合を学習に使っていないモデル」の xG を付け（`data/xg_stat.csv`）、選手・チーム・大会ごとに集計した（`data/aggregates/`。PK・直接フリーキックを除く）。試合を 2つに分けて比べると、打つ場所のよさ（1本あたりの xG）は相関 0.70 で続くが、決定力（1本あたりのゴール − xG）は 0.14 しか続かず、選手ごとの差の多くは偶然と読める。
 
+![Does it repeat? Finishing vs shot quality, matches split in two](notes/figures/finishing_split_half.png)
+
 ```bash
 mise run xg-cv       # シュートごとの xG（5分割の交差検証）
 mise run aggregate   # 集計の CSV と Markdown の表、決定力の確かめ
@@ -41,11 +45,17 @@ mise run figures     # モデルを確かめる図と集計の図（notes/figure
 
 結果・図・読み方は [notes/xg-aggregates.md](./notes/xg-aggregates.md)。
 
-## LLM との比べ（進行中）
+## LLM との比べ
 
 同じシュートを Gemini 3.8 Flash（Vertex AI）に見せ、統計モデルと同じ情報（距離・ゴールの見える角度・頭か足か）だけで、ゴールになる確率を答えさせる。選手の名前・チーム・試合の日付は渡さない。
 
+![LLMs vs a statistical xG model, with 95% intervals](notes/figures/llm_summary.png)
+
+上の図は、どの比べも「同じ情報を渡した統計モデル」との、ログ損失の差と 95% の幅（0 より右なら LLM が悪い）。`mise run summary-figure` で作り直せる。
+
 テストの 8,626本（388試合）では、**当たり方の差は見分けられなかった**（AUC は統計モデル 0.7945・Gemini 0.7938、差の 95% の幅 −0.0043〜+0.0026）。答え方もよく似ている（確率の相関 0.979）。ただし Gemini は確率を低めに出す（平均 0.092、実際の率 0.104）。考える量（thinking）を増やしても良くならなかった（500本の試し）。
+
+![Calibration of the statistical model and Gemini on the same test shots](notes/figures/llm_calibration.png)
 
 両方に**直前のプレー（9組にまとめたもの）とカウンター**を足すと、統計モデルは少しよくなり（ログ損失 0.2765 → 0.2747、差の 95% の幅 −0.0037〜−0.0000）、Gemini はよくならなかった（0.2773 → 0.2776）。広い情報どうしでは、統計モデルのほうがよい（ログ損失の差の幅 +0.0005〜+0.0054。AUC の差は見分けられない）。Gemini は、スルーパスやカウンターで確率を上げ、コーナーで下げるなど向きは合っているが、大きさが合わず、低めに出すくせも強くなった（平均 0.087）。
 

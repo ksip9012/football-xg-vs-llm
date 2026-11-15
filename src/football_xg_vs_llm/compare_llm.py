@@ -55,9 +55,12 @@ BOOTSTRAP = 2000
 SEED = 2026
 DISTANCE_BANDS = (0.0, 6.0, 12.0, 18.0, 24.0, 200.0)
 
-# dataviz の既定のパレット: カテゴリの 1番目（青）と 2番目（オレンジ）
+# dataviz の既定のパレット: 統計モデルはカテゴリの 1番目（青）。LLM は
+# ブランドの色に寄せて、Gemini を 3番目（アクア）、Claude を 2番目（オレンジ）
+# にする（2026-11-15 にユーザーが決めた。ほかの図でも同じ色にする）
 STAT_COLOR = "#2a78d6"
-LLM_COLOR = "#eb6834"
+GEMINI_COLOR = "#1baf7a"
+CLAUDE_COLOR = "#eb6834"
 # 正負の 2色（青 ↔ 赤）と灰色の真ん中
 DIVERGING = ["#184f95", "#6da7ec", "#f0efec", "#ec8a89", "#b33130"]
 DIFF_MAX = 0.1
@@ -205,7 +208,7 @@ def calibration_figure(data: Paired, path: Path) -> None:
     fig, ax = plt.subplots(figsize=(5.4, 5.2), layout="constrained")
     series = [
         ("Statistical model", data.stat, STAT_COLOR),
-        ("Gemini 3.8 Flash", data.llm, LLM_COLOR),
+        ("Gemini 3.8 Flash", data.llm, GEMINI_COLOR),
     ]
     bins_of = {name: calibration(data.goals, p) for name, p, _ in series}
     top = max(
