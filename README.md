@@ -51,6 +51,8 @@ mise run figures     # モデルを確かめる図と集計の図（notes/figure
 
 Gemini の確率の**全体の高さだけを直す**（テストの中で試合単位の 5分割で学び、別の試合に当てる）と、統計モデルとの差は見分けられなくなった（広い情報どうしで、ログ損失の差 +0.0009、幅 −0.0009〜+0.0027）。当てはめた傾きはほぼ 1 で、ずれは高さだけだった。ただし直した Gemini は、ほかの試合の結果から 1〜2つの数を学んでいる。
 
+**Claude Opus 5.5** も、テストから試合単位で選んだ 2,004本で、同じ説明・同じ情報で答えさせた（Anthropic の API、考える量 low、費用 $2.21）。3つの情報では Gemini と見分けられず（確率の相関 0.979）、広い情報では Claude のほうがよかった（ログ損失の差の幅 −0.0096〜−0.0004）。広い情報の Claude と統計モデルは見分けられない。Claude も確率を低めに出す。
+
 ```bash
 mise run llm-trial     # 500本の試し（data/llm_runs/trial/ に答えがあれば API は呼ばない）
 mise run llm-test      # テストの 8,626本（data/llm_runs/test/。同上）
@@ -58,9 +60,12 @@ mise run compare-llm   # 物差し・差の 95% の幅・図
 mise run llm-test-context  # 直前のプレーとカウンターも渡して、テストの 8,626本
 mise run compare-context   # 3つの情報と広い情報の 4つを比べる
 mise run recalibrate       # Gemini の低めに出すくせを直して比べる（API は呼ばない）
+mise run llm-claude        # 2,004本を Claude Opus 5.5 に（data/llm_runs/claude/。料金がかかる）
+mise run llm-claude-context
+mise run compare-claude    # 同じ 2,004本で Claude・Gemini・統計モデルを比べる
 ```
 
-Vertex AI を使うので、手元の `mise.local.toml`（git の対象外）に `GOOGLE_CLOUD_PROJECT` と `GOOGLE_CLOUD_QUOTA_PROJECT` を書き、`gcloud auth application-default login` でログインしておく。結果は [notes/llm-trial.md](./notes/llm-trial.md)（試し）と [notes/llm-test.md](./notes/llm-test.md)（本番）、[notes/llm-context.md](./notes/llm-context.md)（広い情報）、[notes/llm-recalibrate.md](./notes/llm-recalibrate.md)（くせを直す）。
+Vertex AI を使うので、手元の `mise.local.toml`（git の対象外）に `GOOGLE_CLOUD_PROJECT` と `GOOGLE_CLOUD_QUOTA_PROJECT` を書き、`gcloud auth application-default login` でログインしておく。結果は [notes/llm-trial.md](./notes/llm-trial.md)（試し）と [notes/llm-test.md](./notes/llm-test.md)（本番）、[notes/llm-context.md](./notes/llm-context.md)（広い情報）、[notes/llm-recalibrate.md](./notes/llm-recalibrate.md)（くせを直す）、[notes/llm-claude.md](./notes/llm-claude.md)（Claude）。Claude は、手元の `mise.local.toml` に `ANTHROPIC_API_KEY` を書いておく。
 
 ## テストの実行方法
 
@@ -90,3 +95,4 @@ mise run fix     # ruff の自動修正と format
 - [0006](./decisions/0006-compare-with-llm.md): LLM には統計モデルと同じ情報だけを渡して確率を答えさせ、段階を踏んで本数を増やし、同じ物差しと差の幅で比べる
 - [0007](./decisions/0007-context-features.md): 直前のプレーは性質で 9組にまとめ、カウンターと一緒に、統計モデルと Gemini の両方に同じ形で渡す
 - [0008](./decisions/0008-recalibrate-gemini.md): Gemini の確率は、テストの中で試合単位の 5分割で高さと傾きを直し、高さだけの直しと並べて、統計モデルと比べる
+- [0009](./decisions/0009-add-claude.md): Claude は Opus 5.5 を Anthropic の API で呼び、テストから試合単位で選んだ 2,000本ほどで、Gemini と同じ説明・同じ情報で答えさせる
